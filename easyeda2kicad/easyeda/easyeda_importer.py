@@ -117,15 +117,24 @@ class EasyedaSymbolImporter:
         return self.output
 
     def extract_easyeda_data(self, ee_data: dict, ee_data_info: dict) -> EeSymbol:
+        # Check if 'tags' exists in ee_data and has at least one item
+        if "tags" in ee_data and ee_data["tags"]:
+            # Add the first item from 'tags' as a prefix to the name
+            name = f"{ee_data['tags'][0]} - {ee_data_info['name']}"
+        else:
+            name = ee_data_info['name']
+
         new_ee_symbol = EeSymbol(
             info=EeSymbolInfo(
                 name=ee_data_info["name"],
                 prefix=ee_data_info["pre"],
                 package=ee_data_info.get("package", None),
-                manufacturer=ee_data_info.get("BOM_Manufacturer", None),
-                datasheet=ee_data["lcsc"].get("url", None),
+                parameters=ee_data["parameters"],
+                description=ee_data["description"],
+                manufacturer=ee_data_info.get("BOM_Manufacturer", ee_data_info.get("Manufacturer", None)),
+                datasheet=f"https://www.lcsc.com/product-detail/{ee_data['lcsc']['number']}.html",
                 lcsc_id=ee_data["lcsc"].get("number", None),
-                jlc_id=ee_data_info.get("BOM_JLCPCB Part Class", None),
+                jlc_id=ee_data_info.get("BOM_JLCPCB Part Class", ee_data_info.get("JLCPCB Part Class", None)),
             ),
             bbox=EeSymbolBbox(
                 x=float(ee_data["dataStr"]["head"]["x"]),
