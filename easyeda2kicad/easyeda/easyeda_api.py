@@ -87,8 +87,13 @@ class EasyedaApi:
 
         component_data = json5.loads(main_json_structure)
         parameter_data = component_data['data'][0]['detail']['paramVOList']
+        
         # Convert the list of dictionaries into a dictionary with 'paramNameEn' as keys and 'paramValueEn' as values
-        parameters_en_dict = {param['paramNameEn']: param['paramValueEn'] for param in parameter_data}
+        if parameter_data == "None":
+            parameters_en_dict = {}
+        else:
+            parameters_en_dict = {param['paramNameEn']: param['paramValueEn'] for param in parameter_data}
+
 
         parameters_en_dict["Category"] = self.parse_category(soup)
 
