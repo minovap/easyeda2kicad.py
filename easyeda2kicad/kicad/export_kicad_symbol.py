@@ -299,13 +299,15 @@ def convert_ee_paths(
 def convert_to_kicad(ee_symbol: EeSymbol, kicad_version: KicadVersion) -> KiSymbol:
 
     ki_info = KiSymbolInfo(
-        name=ee_symbol.info.name,
-        prefix=ee_symbol.info.prefix.replace("?", ""),
+        name=(f"{ee_symbol.info.parameters['Category']} {ee_symbol.info.name}".replace(" ", "_") 
+            if "Category" in ee_symbol.info.parameters else ee_symbol.info.name),        prefix=ee_symbol.info.prefix.replace("?", ""),
         package=ee_symbol.info.package,
         manufacturer=ee_symbol.info.manufacturer,
         datasheet=ee_symbol.info.datasheet,
         lcsc_id=ee_symbol.info.lcsc_id,
         jlc_id=ee_symbol.info.jlc_id,
+        parameters=ee_symbol.info.parameters,
+        description=ee_symbol.info.description,
     )
 
     kicad_symbol = KiSymbol(
