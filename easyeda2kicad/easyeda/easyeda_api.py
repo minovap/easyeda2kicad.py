@@ -4,6 +4,10 @@ import logging
 import requests
 
 from easyeda2kicad import __version__
+from bs4 import BeautifulSoup
+
+
+API_ENDPOINT_PARAMETERS = "https://easyeda.com/api/eda/product/search?version=6.5.39&keyword={lcsc_id}&needAggs=true&needComponents=true"
 
 API_ENDPOINT = "https://easyeda.com/api/products/{lcsc_id}/components?version=6.4.19.5"
 ENDPOINT_3D_MODEL = "https://easyeda.com/analyzer/api/3dmodel/{uuid}"
@@ -35,7 +39,33 @@ class EasyedaApi:
         cp_cad_info = self.get_info_from_easyeda_api(lcsc_id=lcsc_id)
         if cp_cad_info == {}:
             return {}
+
+       # Get parameters data
+        params_response = requests.get(url=API_ENDPOINT_PARAMETERS.format(lcsc_id=lcsc_id), headers=self.headers)
+        params_data = params_response.json()
+
+        if "result" in params_data and "paramList" in params_data["result"]:
+            parameters = params_data["result"]["paramList"]
+            parameters_obj = {param["parameterName"]: ', '.join(param["parameterValueList"]) for param in parameters}
+            cp_cad_info["result"]["parameters"] = parameters_obj
+        else:
+            cp_cad_info["result"]["parameters"] = []
+
+        # Get product description
+        description_url = f"https://www.lcsc.com/product-detail/{lcsc_id}.html"
+        description_page = requests.get(description_url)
+        soup = BeautifulSoup(description_page.content, 'html.parser')
+
+        description = self.parse_description(soup)
+        cp_cad_info["result"]["description"] = description
+
         return cp_cad_info["result"]
+
+    def parse_description(self, soup: BeautifulSoup) -> str:
+        description_tag = soup.find('td', text='Description')
+        if description_tag and description_tag.find_next_sibling('td'):
+            return description_tag.find_next_sibling('td').get_text(strip=True)
+        return ""
 
     def get_raw_3d_model_obj(self, uuid: str) -> str:
         r = requests.get(
