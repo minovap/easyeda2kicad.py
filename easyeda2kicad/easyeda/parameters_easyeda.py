@@ -1,7 +1,7 @@
 # Global imports
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Union
+from typing import List, Union, Dict
 
 from pydantic import BaseModel, field_validator
 
@@ -290,7 +290,8 @@ class EeSymbolInfo:
     datasheet: str = ""
     lcsc_id: str = ""
     jlc_id: str = ""
-
+    description: str = ""
+    parameters: Dict[str, str] = None
 
 @dataclass
 class EeSymbol:
