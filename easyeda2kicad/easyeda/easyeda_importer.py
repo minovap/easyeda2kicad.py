@@ -1,565 +1,286 @@
 # Global imports
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import List, Union, Dict
+import json
+import logging
 
-from pydantic import BaseModel, field_validator
-
-from easyeda2kicad.easyeda.svg_path_parser import parse_svg_path
+from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
+from easyeda2kicad.easyeda.parameters_easyeda import *
 
 
-class EasyedaPinType(Enum):
-    unspecified = 0
-    _input = 1
-    output = 2
-    bidirectional = 3
-    power = 4
+def add_easyeda_pin(pin_data: str, ee_symbol: EeSymbol):
+    segments = pin_data.split("^^")
+    ee_segments = [seg.split("~") for seg in segments]
+
+    pin_settings = EeSymbolPinSettings(
+        **dict(zip(EeSymbolPinSettings.__fields__, ee_segments[0][1:]))
+    )
+    pin_dot = EeSymbolPinDot(
+        dot_x=float(ee_segments[1][0]), dot_y=float(ee_segments[1][1])
+    )
+    pin_path = EeSymbolPinPath(path=ee_segments[2][0], color=ee_segments[2][1])
+    pin_name = EeSymbolPinName(
+        **dict(zip(EeSymbolPinName.__fields__, ee_segments[3][:]))
+    )
+
+    pin_dot_bis = EeSymbolPinDotBis(
+        is_displayed=ee_segments[5][0],
+        circle_x=float(ee_segments[5][1]),
+        circle_y=float(ee_segments[5][2]),
+    )
+    pin_clock = EeSymbolPinClock(is_displayed=ee_segments[6][0], path=ee_segments[6][1])
+
+    ee_symbol.pins.append(
+        EeSymbolPin(
+            settings=pin_settings,
+            pin_dot=pin_dot,
+            pin_path=pin_path,
+            name=pin_name,
+            dot=pin_dot_bis,
+            clock=pin_clock,
+        )
+    )
 
 
-# ------------------------- Symbol -------------------------
-class EeSymbolBbox(BaseModel):
-    x: float
-    y: float
+def add_easyeda_rectangle(rectangle_data: str, ee_symbol: EeSymbol):
+    ee_symbol.rectangles.append(
+        EeSymbolRectangle(
+            **dict(zip(EeSymbolRectangle.__fields__, rectangle_data.split("~")[1:]))
+        )
+    )
 
 
-# ---------------- PIN ----------------
-class EeSymbolPinSettings(BaseModel):
-    is_displayed: bool
-    type: EasyedaPinType
-    spice_pin_number: str
-    pos_x: float
-    pos_y: float
-    rotation: int
-    id: str
-    is_locked: bool
+def add_easyeda_polyline(polyline_data: str, ee_symbol: EeSymbol):
+    ee_symbol.polylines.append(
+        EeSymbolPolyline(
+            **dict(zip(EeSymbolPolyline.__fields__, polyline_data.split("~")[1:]))
+        )
+    )
 
-    @field_validator("is_displayed", mode="before")
-    @classmethod
-    def parse_display_field(cls, field: str) -> bool:
-        return True if field == "show" else field
 
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, is_locked: str) -> str:
-        return is_locked or False
+def add_easyeda_polygon(polygon_data: str, ee_symbol: EeSymbol):
+    ee_symbol.polygons.append(
+        EeSymbolPolygon(
+            **dict(zip(EeSymbolPolygon.__fields__, polygon_data.split("~")[1:]))
+        )
+    )
 
-    @field_validator("rotation", mode="before")
-    @classmethod
-    def empty_str_rotation(cls, rotation: str) -> str:
-        return rotation or 0.0
 
-    @field_validator("type", mode="before")
-    @classmethod
-    def convert_pin_type(cls, field: str) -> str:
-        return (
-            EasyedaPinType(int(field or 0))
-            if int(field or 0) in EasyedaPinType._value2member_map_
-            else EasyedaPinType._unspecified
+def add_easyeda_path(path_data: str, ee_symbol: EeSymbol):
+    ee_symbol.paths.append(
+        EeSymbolPath(**dict(zip(EeSymbolPath.__fields__, path_data.split("~")[1:])))
+    )
+
+
+def add_easyeda_circle(circle_data: str, ee_symbol: EeSymbol):
+    ee_symbol.circles.append(
+        EeSymbolCircle(
+            **dict(zip(EeSymbolCircle.__fields__, circle_data.split("~")[1:]))
+        )
+    )
+
+
+def add_easyeda_ellipse(ellipse_data: str, ee_symbol: EeSymbol):
+    ee_symbol.ellipses.append(
+        EeSymbolEllipse(
+            **dict(zip(EeSymbolEllipse.__fields__, ellipse_data.split("~")[1:]))
+        )
+    )
+
+
+def add_easyeda_arc(arc_data: str, ee_symbol: EeSymbol):
+    ee_symbol.arcs.append(
+        EeSymbolArc(**dict(zip(EeSymbolArc.__fields__, arc_data.split("~")[1:])))
+    )
+
+
+easyeda_handlers = {
+    "P": add_easyeda_pin,
+    "R": add_easyeda_rectangle,
+    "E": add_easyeda_ellipse,
+    "C": add_easyeda_circle,
+    "A": add_easyeda_arc,
+    "PL": add_easyeda_polyline,
+    "PG": add_easyeda_polygon,
+    "PT": add_easyeda_path,
+    # "PI" : Pie, Elliptical arc seems to be not supported in Kicad
+}
+
+
+class EasyedaSymbolImporter:
+    def __init__(self, easyeda_cp_cad_data: dict):
+        self.input = easyeda_cp_cad_data
+        self.output: EeSymbol = self.extract_easyeda_data(
+            ee_data=easyeda_cp_cad_data,
+            ee_data_info=easyeda_cp_cad_data["dataStr"]["head"]["c_para"],
         )
 
-
-class EeSymbolPinDot(BaseModel):
-    dot_x: float
-    dot_y: float
-
-
-class EeSymbolPinPath(BaseModel):
-    path: str
-    color: str
-
-    @field_validator("path", mode="before")
-    @classmethod
-    def tune_path(cls, field: str) -> str:
-        return field.replace("v", "h")
-
-
-class EeSymbolPinName(BaseModel):
-    is_displayed: bool
-    pos_x: float
-    pos_y: float
-    rotation: int
-    text: str
-    text_anchor: str
-    font: str
-    font_size: float
-
-    @field_validator("font_size", mode="before")
-    @classmethod
-    def empty_str_font(cls, font_size: str) -> float:
-        if isinstance(font_size, str) and "pt" in font_size:
-            return float(font_size.replace("pt", ""))
-        return font_size or 7.0
-
-    @field_validator("is_displayed", mode="before")
-    @classmethod
-    def parse_display_field(cls, field: str) -> str:
-        return True if field == "show" else field
-
-    @field_validator("rotation", mode="before")
-    @classmethod
-    def empty_str_rotation(cls, rotation: str) -> str:
-        return rotation or 0.0
-
-
-class EeSymbolPinDotBis(BaseModel):
-    is_displayed: bool
-    circle_x: float
-    circle_y: float
-
-    @field_validator("is_displayed", mode="before")
-    @classmethod
-    def parse_display_field(cls, field: str) -> str:
-        return True if field == "show" else field
-
-
-class EeSymbolPinClock(BaseModel):
-    is_displayed: bool
-    path: str
-
-    @field_validator("is_displayed", mode="before")
-    @classmethod
-    def parse_display_field(cls, field: str) -> str:
-        return True if field == "show" else field
-
-
-@dataclass
-class EeSymbolPin:
-    settings: EeSymbolPinSettings
-    pin_dot: EeSymbolPinDot
-    pin_path: EeSymbolPinPath
-    name: EeSymbolPinName
-    dot: EeSymbolPinDotBis
-    clock: EeSymbolPinClock
-
-
-# ---------------- RECTANGLE ----------------
-class EeSymbolRectangle(BaseModel):
-    pos_x: float
-    pos_y: float
-    rx: Union[float, None] = None
-    ry: Union[float, None] = None
-    width: float
-    height: float
-    stroke_color: str
-    stroke_width: str
-    stroke_style: str
-    fill_color: str
-    id: str
-    is_locked: bool
-
-    @field_validator("*", mode="before")
-    @classmethod
-    def empty_str_to_none(cls, field: str) -> str:
-        return field or None
-
-
-# ---------------- CIRCLE ----------------
-class EeSymbolCircle(BaseModel):
-    center_x: float
-    center_y: float
-    radius: float
-    stroke_color: str
-    stroke_width: str
-    stroke_style: str
-    fill_color: bool
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    @field_validator("fill_color", mode="before")
-    @classmethod
-    def parse_background_filling(cls, fill_color: str) -> str:
-        return bool(fill_color and fill_color.lower() != "none")
-
-
-# ---------------- ARC ----------------
-class EeSymbolArc(BaseModel):
-    path: list
-    helper_dots: str
-    stroke_color: str
-    stroke_width: str
-    stroke_style: str
-    fill_color: bool
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    @field_validator("fill_color", mode="before")
-    @classmethod
-    def parse_background_filling(cls, fill_color: str) -> str:
-        return bool(fill_color and fill_color.lower() != "none")
-
-    @field_validator("path", mode="before")
-    @classmethod
-    def convert_svg_path(cls, path: str) -> list:
-        return parse_svg_path(svg_path=path)
-
-
-class EeSymbolEllipse(BaseModel):
-    center_x: float
-    center_y: float
-    radius_x: float
-    radius_y: float
-    stroke_color: str
-    stroke_width: str
-    stroke_style: str
-    fill_color: bool
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    @field_validator("fill_color", mode="before")
-    @classmethod
-    def parse_background_filling(cls, fill_color: str) -> str:
-        return bool(fill_color and fill_color.lower() != "none")
-
-
-# ---------------- POLYLINE ----------------
-class EeSymbolPolyline(BaseModel):
-    points: str
-    stroke_color: str
-    stroke_width: str
-    stroke_style: str
-    fill_color: bool
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    @field_validator("fill_color", mode="before")
-    @classmethod
-    def parse_background_filling(cls, fill_color: str) -> str:
-        return bool(fill_color and fill_color.lower() != "none")
-
-
-# ---------------- POLYGON ----------------
-class EeSymbolPolygon(EeSymbolPolyline):
-    ...
-
-
-# ---------------- PATH ----------------
-# TODO : EeSymbolPath.paths should be a SVG PATH https://www.w3.org/TR/SVG11/paths.html#PathElement
-# TODO : small svg parser and then convert to kicad
-# TODO: support bezier curve, currently paths are seen as polygone
-class EeSymbolPath(BaseModel):
-    paths: str
-    stroke_color: str
-    stroke_width: str
-    stroke_style: str
-    fill_color: bool
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    @field_validator("fill_color", mode="before")
-    @classmethod
-    def parse_background_filling(cls, fill_color: str) -> str:
-        return bool(fill_color and fill_color.lower() != "none")
-
-    # @validator("paths", pre=True)
-    # def clean_svg_path(cls, paths:str):
-    #     return paths.replace("M", "").replace("C","")
-
-
-# ---------------- SYMBOL ----------------
-@dataclass
-class EeSymbolInfo:
-    name: str = ""
-    prefix: str = ""
-    package: str = ""
-    manufacturer: str = ""
-    datasheet: str = ""
-    lcsc_id: str = ""
-    jlc_id: str = ""
-    description: str = ""
-    parameters: Dict[str, str] = None
-
-@dataclass
-class EeSymbol:
-    info: EeSymbolInfo
-    bbox: EeSymbolBbox
-    pins: List[EeSymbolPin] = field(default_factory=list)
-    rectangles: List[EeSymbolRectangle] = field(default_factory=list)
-    circles: List[EeSymbolCircle] = field(default_factory=list)
-    arcs: List[EeSymbolArc] = field(default_factory=list)
-    ellipses: List[EeSymbolEllipse] = field(default_factory=list)
-    polylines: List[EeSymbolPolyline] = field(default_factory=list)
-    polygons: List[EeSymbolPolygon] = field(default_factory=list)
-    paths: List[EeSymbolPath] = field(default_factory=list)
-
-
-# ------------------------- Footprint -------------------------
-
-
-def convert_to_mm(dim: float) -> float:
-    return float(dim) * 10 * 0.0254
-
-
-@dataclass
-class EeFootprintBbox:
-
-    x: float
-    y: float
-
-    def convert_to_mm(self) -> None:
-        self.x = convert_to_mm(self.x)
-        self.y = convert_to_mm(self.y)
-
-
-class EeFootprintPad(BaseModel):
-    shape: str
-    center_x: float
-    center_y: float
-    width: float
-    height: float
-    layer_id: int
-    net: str
-    number: str
-    hole_radius: float
-    points: str
-    rotation: float
-    id: str
-    hole_length: float
-    hole_point: str
-    is_plated: bool
-    is_locked: bool
-
-    def convert_to_mm(self) -> None:
-        self.center_x = convert_to_mm(self.center_x)
-        self.center_y = convert_to_mm(self.center_y)
-        self.width = convert_to_mm(self.width)
-        self.height = convert_to_mm(self.height)
-        self.hole_radius = convert_to_mm(self.hole_radius)
-        self.hole_length = convert_to_mm(self.hole_length)
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    @field_validator("rotation", mode="before")
-    @classmethod
-    def empty_str_rotation(cls, field: str) -> str:
-        return field or 0.0
-
-
-class EeFootprintTrack(BaseModel):
-    stroke_width: float
-    layer_id: int
-    net: str
-    points: str
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    def convert_to_mm(self) -> None:
-        self.stroke_width = convert_to_mm(self.stroke_width)
-
-
-class EeFootprintHole(BaseModel):
-    center_x: float
-    center_y: float
-    radius: float
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    def convert_to_mm(self) -> None:
-        self.center_x = convert_to_mm(self.center_x)
-        self.center_y = convert_to_mm(self.center_y)
-        self.radius = convert_to_mm(self.radius)
-
-
-class EeFootprintVia(BaseModel):
-    center_x: float
-    center_y: float
-    diameter: float
-    net: str
-    radius: float
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    def convert_to_mm(self) -> None:
-        self.center_x = convert_to_mm(self.center_x)
-        self.center_y = convert_to_mm(self.center_y)
-        self.radius = convert_to_mm(self.radius)
-        self.diameter = convert_to_mm(self.diameter)
-
-
-class EeFootprintCircle(BaseModel):
-    cx: float
-    cy: float
-    radius: float
-    stroke_width: float
-    layer_id: int
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field: str) -> str:
-        return field or False
-
-    def convert_to_mm(self) -> None:
-        self.cx = convert_to_mm(self.cx)
-        self.cy = convert_to_mm(self.cy)
-        self.radius = convert_to_mm(self.radius)
-        self.stroke_width = convert_to_mm(self.stroke_width)
-
-
-class EeFootprintRectangle(BaseModel):
-    x: float
-    y: float
-    width: float
-    height: float
-    stroke_width: float
-    id: str
-    layer_id: int
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field):
-        return False if field == "" else bool(float(field))
-
-    def convert_to_mm(self):
-        self.x = convert_to_mm(self.x)
-        self.y = convert_to_mm(self.y)
-        self.width = convert_to_mm(self.width)
-        self.height = convert_to_mm(self.height)
-
-
-class EeFootprintArc(BaseModel):
-    stroke_width: float
-    layer_id: int
-    net: str
-    path: str
-    helper_dots: str
-    id: str
-    is_locked: bool
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field):
-        return False if field == "" else field
-
-
-class EeFootprintText(BaseModel):
-    type: str
-    center_x: float
-    center_y: float
-    stroke_width: float
-    rotation: int
-    miror: str
-    layer_id: int
-    net: str
-    font_size: float
-    text: str
-    text_path: str
-    is_displayed: bool
-    id: str
-    is_locked: bool
-
-    @field_validator("is_displayed", mode="before")
-    @classmethod
-    def empty_str_display(cls, field):
-        return True if field == "" else field
-
-    @field_validator("is_locked", mode="before")
-    @classmethod
-    def empty_str_lock(cls, field):
-        return False if field == "" else field
-
-    @field_validator("rotation", mode="before")
-    @classmethod
-    def empty_str_rotation(cls, field):
-        return 0.0 if field == "" else field
-
-    def convert_to_mm(self):
-
-        self.center_x = convert_to_mm(self.center_x)
-        self.center_y = convert_to_mm(self.center_y)
-        self.stroke_width = convert_to_mm(self.stroke_width)
-        self.font_size = convert_to_mm(self.font_size)
-
-
-# ---------------- FOOTPRINT ----------------
-
-
-@dataclass
-class EeFootprintInfo:
-    name: str
-    fp_type: str
-    model_3d_name: str
-
-
-# ------------------------- 3D MODEL -------------------------
-class Ee3dModelBase(BaseModel):
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
-
-    def convert_to_mm(self) -> None:
-        self.x = convert_to_mm(self.x)
-        self.y = convert_to_mm(self.y)
-        self.z = convert_to_mm(self.z)
-
-
-@dataclass
-class Ee3dModel:
-    name: str
-    uuid: str
-    translation: Ee3dModelBase
-    rotation: Ee3dModelBase
-    raw_obj: str = None
-
-    def convert_to_mm(self) -> None:
-        self.translation.convert_to_mm()
-        # self.translation.z = self.translation.z
-
-
-@dataclass
-class ee_footprint:
-    info: EeFootprintInfo
-    bbox: EeFootprintBbox
-    model_3d: Ee3dModel
-    pads: List[EeFootprintPad] = field(default_factory=list)
-    tracks: List[EeFootprintTrack] = field(default_factory=list)
-    holes: List[EeFootprintHole] = field(default_factory=list)
-    vias: List[EeFootprintVia] = field(default_factory=list)
-    circles: List[EeFootprintCircle] = field(default_factory=list)
-    arcs: List[EeFootprintArc] = field(default_factory=list)
-    rectangles: List[EeFootprintRectangle] = field(default_factory=list)
-    texts: List[EeFootprintText] = field(default_factory=list)
+    def get_symbol(self) -> EeSymbol:
+        return self.output
+
+    def extract_easyeda_data(self, ee_data: dict, ee_data_info: dict) -> EeSymbol:
+        # Check if 'tags' exists in ee_data and has at least one item
+        if "tags" in ee_data and ee_data["tags"]:
+            # Add the first item from 'tags' as a prefix to the name
+            name = f"{ee_data['tags'][0]} - {ee_data_info['name']}"
+        else:
+            name = ee_data_info['name']
+
+        new_ee_symbol = EeSymbol(
+            info=EeSymbolInfo(
+                name=ee_data_info["name"],
+                prefix=ee_data_info["pre"],
+                package=ee_data_info.get("package", None),
+                parameters=ee_data["parameters"],
+                description=ee_data["description"],
+                manufacturer=ee_data_info.get("BOM_Manufacturer", ee_data_info.get("Manufacturer", None)),
+                datasheet=f"https://www.lcsc.com/product-detail/{ee_data['lcsc']['number']}.html",
+                lcsc_id=ee_data["lcsc"].get("number", None),
+                jlc_id=ee_data_info.get("BOM_JLCPCB Part Class", ee_data_info.get("JLCPCB Part Class", None)),
+            ),
+            bbox=EeSymbolBbox(
+                x=float(ee_data["dataStr"]["head"]["x"]),
+                y=float(ee_data["dataStr"]["head"]["y"]),
+            ),
+        )
+
+        for line in ee_data["dataStr"]["shape"]:
+            designator = line.split("~")[0]
+            if designator in easyeda_handlers:
+                easyeda_handlers[designator](line, new_ee_symbol)
+            else:
+                logging.warning(f"Unknow symbol designator : {designator}")
+
+        return new_ee_symbol
+
+
+class EasyedaFootprintImporter:
+    def __init__(self, easyeda_cp_cad_data: dict):
+        self.input = easyeda_cp_cad_data
+        self.output = self.extract_easyeda_data(
+            ee_data_str=self.input["packageDetail"]["dataStr"],
+            ee_data_info=self.input["packageDetail"]["dataStr"]["head"]["c_para"],
+            is_smd=self.input.get("SMT")
+            and "-TH_" not in self.input["packageDetail"]["title"],
+        )
+
+    def get_footprint(self):
+        return self.output
+
+    def extract_easyeda_data(
+        self, ee_data_str: dict, ee_data_info: dict, is_smd: bool
+    ) -> ee_footprint:
+        new_ee_footprint = ee_footprint(
+            info=EeFootprintInfo(
+                name=ee_data_info["package"],
+                fp_type="smd" if is_smd else "tht",
+                model_3d_name=ee_data_info.get("3DModel"),
+            ),
+            bbox=EeFootprintBbox(
+                x=float(ee_data_str["head"]["x"]),
+                y=float(ee_data_str["head"]["y"]),
+            ),
+            model_3d=None,
+        )
+
+        for line in ee_data_str["shape"]:
+            ee_designator = line.split("~")[0]
+            ee_fields = line.split("~")[1:]
+
+            if ee_designator == "PAD":
+                ee_pad = EeFootprintPad(
+                    **dict(zip(EeFootprintPad.__fields__, ee_fields[:18]))
+                )
+                new_ee_footprint.pads.append(ee_pad)
+            elif ee_designator == "TRACK":
+                ee_track = EeFootprintTrack(
+                    **dict(zip(EeFootprintTrack.__fields__, ee_fields))
+                )
+                new_ee_footprint.tracks.append(ee_track)
+            elif ee_designator == "HOLE":
+                ee_hole = EeFootprintHole(
+                    **dict(zip(EeFootprintHole.__fields__, ee_fields))
+                )
+                new_ee_footprint.holes.append(ee_hole)
+            elif ee_designator == "VIA":
+                ee_via = EeFootprintVia(
+                    **dict(zip(EeFootprintVia.__fields__, ee_fields))
+                )
+                new_ee_footprint.vias.append(ee_via)
+            elif ee_designator == "CIRCLE":
+                ee_circle = EeFootprintCircle(
+                    **dict(zip(EeFootprintCircle.__fields__, ee_fields))
+                )
+                new_ee_footprint.circles.append(ee_circle)
+            elif ee_designator == "ARC":
+                ee_arc = EeFootprintArc(
+                    **dict(zip(EeFootprintArc.__fields__, ee_fields))
+                )
+                new_ee_footprint.arcs.append(ee_arc)
+            elif ee_designator == "RECT":
+                ee_rectangle = EeFootprintRectangle(
+                    **dict(zip(EeFootprintRectangle.__fields__, ee_fields))
+                )
+                new_ee_footprint.rectangles.append(ee_rectangle)
+            elif ee_designator == "TEXT":
+                ee_text = EeFootprintText(
+                    **dict(zip(EeFootprintText.__fields__, ee_fields))
+                )
+                new_ee_footprint.texts.append(ee_text)
+            elif ee_designator == "SVGNODE":
+                new_ee_footprint.model_3d = Easyeda3dModelImporter(
+                    easyeda_cp_cad_data=[line], download_raw_3d_model=False
+                ).output
+
+            elif ee_designator == "SOLIDREGION":
+                ...
+            else:
+                logging.warning(f"Unknow footprint designator : {ee_designator}")
+
+        return new_ee_footprint
+
+
+# ------------------------------------------------------------------------------
+
+
+class Easyeda3dModelImporter:
+    def __init__(self, easyeda_cp_cad_data, download_raw_3d_model: bool):
+        self.input = easyeda_cp_cad_data
+        self.download_raw_3d_model = download_raw_3d_model
+        self.output = self.create_3d_model()
+
+    def create_3d_model(self) -> Union[Ee3dModel, None]:
+        ee_data = (
+            self.input["packageDetail"]["dataStr"]["shape"]
+            if isinstance(self.input, dict)
+            else self.input
+        )
+
+        if model_3d_info := self.get_3d_model_info(ee_data=ee_data):
+            model_3d: Ee3dModel = self.parse_3d_model_info(info=model_3d_info)
+            if self.download_raw_3d_model:
+                model_3d.raw_obj = EasyedaApi().get_raw_3d_model_obj(uuid=model_3d.uuid)
+            return model_3d
+
+        logging.warning("No 3D model available for this component")
+        return None
+
+    def get_3d_model_info(self, ee_data: str) -> dict:
+        for line in ee_data:
+            ee_designator = line.split("~")[0]
+            if ee_designator == "SVGNODE":
+                raw_json = line.split("~")[1:][0]
+                return json.loads(raw_json)["attrs"]
+        return {}
+
+    def parse_3d_model_info(self, info: dict) -> Ee3dModel:
+        return Ee3dModel(
+            name=info["title"],
+            uuid=info["uuid"],
+            translation=Ee3dModelBase(
+                x=info["c_origin"].split(",")[0],
+                y=info["c_origin"].split(",")[1],
+                z=info["z"],
+            ),
+            rotation=Ee3dModelBase(
+                **dict(zip(Ee3dModelBase.__fields__, info["c_rotation"].split(",")))
+            ),
+        )
