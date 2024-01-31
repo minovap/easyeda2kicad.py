@@ -4,8 +4,7 @@ import re
 import textwrap
 from dataclasses import dataclass, field, fields
 from enum import Enum, auto
-from typing import List, Union
-
+from typing import List, Union, Dict
 
 class KicadVersion(Enum):
     v5 = auto()
@@ -136,12 +135,14 @@ class KiSymbolInfo:
     name: str
     prefix: str
     package: str
+    description: str
     manufacturer: str
     datasheet: str
     lcsc_id: str
     jlc_id: str
     y_low: Union[int, float] = 0
     y_high: Union[int, float] = 0
+    parameters: Dict[str, str] = None  # Adding parameters attribute
 
     def export_v5(self) -> str:
         field_offset_y = KiExportConfigV5.FIELD_OFFSET_START.value
@@ -311,6 +312,33 @@ class KiSymbolInfo:
                     hide="hide",
                 )
             )
+        if self.description:
+            field_offset_y += KiExportConfigV6.FIELD_OFFSET_INCREMENT.value
+            header.append(
+                property_template.format(
+                    key="Description",
+                    value=self.description,
+                    id_=6,
+                    pos_y=self.y_low - field_offset_y,
+                    font_size=KiExportConfigV6.PROPERTY_FONT_SIZE.value,
+                    style="",
+                    hide="hide",
+                )
+            )
+        if self.parameters:
+            for key, value in self.parameters.items():
+                field_offset_y += KiExportConfigV6.FIELD_OFFSET_INCREMENT.value
+                header.append(
+                    property_template.format(
+                        key=key,
+                        value=value,
+                        id_=len(header),
+                        pos_y=self.y_low - field_offset_y,
+                        font_size=KiExportConfigV6.PROPERTY_FONT_SIZE.value,
+                        style="",
+                        hide="hide",
+                    )
+                )
 
         return header
 
