@@ -6,7 +6,7 @@ from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
 from easyeda2kicad.easyeda.parameters_easyeda import *
 
 
-def add_easyeda_pin(pin_data: str, ee_symbol: EeSymbol):
+def add_easyeda_pin(pin_data: str, ee_symbol: EeSymbol, hide_pin_name: bool):
     segments = pin_data.split("^^")
     ee_segments = [seg.split("~") for seg in segments]
 
@@ -20,6 +20,9 @@ def add_easyeda_pin(pin_data: str, ee_symbol: EeSymbol):
     pin_name = EeSymbolPinName(
         **dict(zip(EeSymbolPinName.__fields__, ee_segments[3][:]))
     )
+
+    if hide_pin_name is True:
+        pin_name.text = ""
 
     pin_dot_bis = EeSymbolPinDotBis(
         is_displayed=ee_segments[5][0],
@@ -40,7 +43,7 @@ def add_easyeda_pin(pin_data: str, ee_symbol: EeSymbol):
     )
 
 
-def add_easyeda_rectangle(rectangle_data: str, ee_symbol: EeSymbol):
+def add_easyeda_rectangle(rectangle_data: str, ee_symbol: EeSymbol, hide_pin_name: bool):
     ee_symbol.rectangles.append(
         EeSymbolRectangle(
             **dict(zip(EeSymbolRectangle.__fields__, rectangle_data.split("~")[1:]))
@@ -48,7 +51,7 @@ def add_easyeda_rectangle(rectangle_data: str, ee_symbol: EeSymbol):
     )
 
 
-def add_easyeda_polyline(polyline_data: str, ee_symbol: EeSymbol):
+def add_easyeda_polyline(polyline_data: str, ee_symbol: EeSymbol, hide_pin_name: bool):
     ee_symbol.polylines.append(
         EeSymbolPolyline(
             **dict(zip(EeSymbolPolyline.__fields__, polyline_data.split("~")[1:]))
@@ -56,7 +59,7 @@ def add_easyeda_polyline(polyline_data: str, ee_symbol: EeSymbol):
     )
 
 
-def add_easyeda_polygon(polygon_data: str, ee_symbol: EeSymbol):
+def add_easyeda_polygon(polygon_data: str, ee_symbol: EeSymbol, hide_pin_name: bool):
     ee_symbol.polygons.append(
         EeSymbolPolygon(
             **dict(zip(EeSymbolPolygon.__fields__, polygon_data.split("~")[1:]))
@@ -64,13 +67,13 @@ def add_easyeda_polygon(polygon_data: str, ee_symbol: EeSymbol):
     )
 
 
-def add_easyeda_path(path_data: str, ee_symbol: EeSymbol):
+def add_easyeda_path(path_data: str, ee_symbol: EeSymbol, hide_pin_name: bool):
     ee_symbol.paths.append(
         EeSymbolPath(**dict(zip(EeSymbolPath.__fields__, path_data.split("~")[1:])))
     )
 
 
-def add_easyeda_circle(circle_data: str, ee_symbol: EeSymbol):
+def add_easyeda_circle(circle_data: str, ee_symbol: EeSymbol, hide_pin_name: bool):
     ee_symbol.circles.append(
         EeSymbolCircle(
             **dict(zip(EeSymbolCircle.__fields__, circle_data.split("~")[1:]))
@@ -78,7 +81,7 @@ def add_easyeda_circle(circle_data: str, ee_symbol: EeSymbol):
     )
 
 
-def add_easyeda_ellipse(ellipse_data: str, ee_symbol: EeSymbol):
+def add_easyeda_ellipse(ellipse_data: str, ee_symbol: EeSymbol, hide_pin_name: bool):
     ee_symbol.ellipses.append(
         EeSymbolEllipse(
             **dict(zip(EeSymbolEllipse.__fields__, ellipse_data.split("~")[1:]))
@@ -86,7 +89,7 @@ def add_easyeda_ellipse(ellipse_data: str, ee_symbol: EeSymbol):
     )
 
 
-def add_easyeda_arc(arc_data: str, ee_symbol: EeSymbol):
+def add_easyeda_arc(arc_data: str, ee_symbol: EeSymbol, hide_pin_name: bool):
     ee_symbol.arcs.append(
         EeSymbolArc(**dict(zip(EeSymbolArc.__fields__, arc_data.split("~")[1:])))
     )
@@ -117,13 +120,6 @@ class EasyedaSymbolImporter:
         return self.output
 
     def extract_easyeda_data(self, ee_data: dict, ee_data_info: dict) -> EeSymbol:
-        # Check if 'tags' exists in ee_data and has at least one item
-        if "tags" in ee_data and ee_data["tags"]:
-            # Add the first item from 'tags' as a prefix to the name
-            name = f"{ee_data['tags'][0]} - {ee_data_info['name']}"
-        else:
-            name = ee_data_info['name']
-
         new_ee_symbol = EeSymbol(
             info=EeSymbolInfo(
                 name=ee_data_info["name"],
@@ -142,10 +138,12 @@ class EasyedaSymbolImporter:
             ),
         )
 
+        pin_count = sum(1 for line in ee_data["dataStr"]["shape"] if line.split("~")[0] == "P")
+
         for line in ee_data["dataStr"]["shape"]:
             designator = line.split("~")[0]
             if designator in easyeda_handlers:
-                easyeda_handlers[designator](line, new_ee_symbol)
+                easyeda_handlers[designator](line, new_ee_symbol, pin_count <= 2)
             else:
                 logging.warning(f"Unknow symbol designator : {designator}")
 

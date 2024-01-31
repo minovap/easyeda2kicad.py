@@ -239,7 +239,7 @@ class KiSymbolInfo:
             ),
             property_template.format(
                 key="Value",
-                value=self.name,
+                value=self.parameters.get("Value", self.name),
                 id_=1,
                 pos_y=self.y_low - field_offset_y,
                 font_size=KiExportConfigV6.PROPERTY_FONT_SIZE.value,
@@ -318,7 +318,7 @@ class KiSymbolInfo:
                 property_template.format(
                     key="Description",
                     value=self.description,
-                    id_=6,
+                    id_=7,
                     pos_y=self.y_low - field_offset_y,
                     font_size=KiExportConfigV6.PROPERTY_FONT_SIZE.value,
                     style="",
