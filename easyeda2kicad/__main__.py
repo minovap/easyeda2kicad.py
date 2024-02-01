@@ -322,6 +322,8 @@ def main(argv: List[str] = sys.argv[1:]) -> int:
             model_3d_path = "${EASYEDA2KICAD}/easyeda2kicad.3dshapes"
         if arguments["project_relative"]:
             model_3d_path = "${KIPRJMOD}" + model_3d_path
+        if arguments["custom_library_path"]:
+            model_3d_path = "${EASYEDA_LIB_PATH}" + model_3d_path
 
         ki_footprint.export(
             footprint_full_path=f"{footprint_path}/{footprint_filename}",
