@@ -97,6 +97,13 @@ def get_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--custom-library-path",
+        required=False,
+        help="Sets the 3D file path stored to a variable you can set manually in Kicad",
+        action="store_true",
+    )
+
+    parser.add_argument(
         "--debug",
         help="set the logging level to debug",
         required=False,
