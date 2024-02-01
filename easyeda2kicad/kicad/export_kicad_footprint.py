@@ -514,9 +514,13 @@ class ExporterFootprintKicad:
         if ki.model_3d is not None:
             ki_lib += KI_MODEL_3D.format(
                 file_3d=f"{model_3d_path}/{ki.model_3d.name}.wrl",
-                pos_x=ki.model_3d.translation.x,
-                pos_y=ki.model_3d.translation.y,
-                pos_z=ki.model_3d.translation.z,
+                #pos_x=ki.model_3d.translation.x,
+                #pos_y=ki.model_3d.translation.y,
+                #pos_z=ki.model_3d.translation.z,
+                # Set default position to 0 in order to solve parts not being places correctly
+                pos_x=0,
+                pos_y=0,
+                pos_z=0,
                 rot_x=ki.model_3d.rotation.x,
                 rot_y=ki.model_3d.rotation.y,
                 rot_z=ki.model_3d.rotation.z,
