@@ -6,7 +6,7 @@ with open("README.md") as fh:
 production_dependencies = [
     "pydantic>=2.0.0",
     "requests>2.0.0",
-    "json5>0.9.14",
+    "json5>=0.9.14",
     "beautifulsoup4>=4.12.0"
     ]
 
