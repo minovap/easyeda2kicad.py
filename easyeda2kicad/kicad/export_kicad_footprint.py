@@ -285,8 +285,18 @@ class ExporterFootprintKicad:
                 stroke_width=max(ee_track.stroke_width, 0.01),
             )
 
-            # Generate line
-            point_list = [fp_to_ki(point) for point in ee_track.points.split(" ")]
+            # Attempt to convert a string to a float, returning None if conversion fails
+            def safe_float_convert(value):
+                try:
+                    return float(value)
+                except ValueError:
+                    return None
+
+            # Process points, ignoring any values that cannot be converted to floats
+            point_list = [safe_float_convert(fp_to_ki(point)) for point in ee_track.points.split(" ") if point.strip()]
+            # Filter out any None values that resulted from failed conversions
+            point_list = [point for point in point_list if point is not None]
+
             for i in range(0, len(point_list) - 2, 2):
                 ki_track.points_start_x.append(
                     round(point_list[i] - self.input.bbox.x, 2)
