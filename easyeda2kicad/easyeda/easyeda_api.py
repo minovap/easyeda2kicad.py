@@ -12,6 +12,7 @@ API_ENDPOINT_PARAMETERS = "https://easyeda.com/api/eda/product/search?version=6.
 
 API_ENDPOINT = "https://easyeda.com/api/products/{lcsc_id}/components?version=6.4.19.5"
 ENDPOINT_3D_MODEL = "https://easyeda.com/analyzer/api/3dmodel/{uuid}"
+UUID_ENDPOINT = "https://easyeda.com/api/components/{uuid}?version=6.5.40"
 # ------------------------------------------------------------
 
 
@@ -37,6 +38,19 @@ class EasyedaApi:
         return r.json()
 
     def get_cad_data_of_component(self, lcsc_id: str) -> dict:
+        if not lcsc_id[1:].isnumeric():
+            # If after removing "C" the ID is not numeric, treat it as a UUID
+            r = requests.get(url=UUID_ENDPOINT.format(uuid=lcsc_id[1:]), headers=self.headers)
+            api_response = r.json()
+
+            if not api_response or ("code" in api_response and api_response["success"] is False):
+                logging.debug(f"{api_response}")
+                return {}
+            api_response["result"]["parameters"] = { "Custom Part UUID": lcsc_id[1:] }
+            api_response["result"]["lcsc"] = { "number": lcsc_id[1:] }
+
+            return api_response["result"]
+
         cp_cad_info = self.get_info_from_easyeda_api(lcsc_id=lcsc_id)
         if cp_cad_info == {}:
             return {}

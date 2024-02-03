@@ -219,10 +219,13 @@ class EasyedaFootprintImporter:
                 )
                 new_ee_footprint.rectangles.append(ee_rectangle)
             elif ee_designator == "TEXT":
-                ee_text = EeFootprintText(
-                    **dict(zip(EeFootprintText.__fields__, ee_fields))
-                )
-                new_ee_footprint.texts.append(ee_text)
+                try:
+                    ee_text = EeFootprintText(
+                        **dict(zip(EeFootprintText.__fields__, ee_fields))
+                    )
+                    new_ee_footprint.texts.append(ee_text)
+                except Exception as e:
+                    print(f"An error occurred: {e}")
             elif ee_designator == "SVGNODE":
                 new_ee_footprint.model_3d = Easyeda3dModelImporter(
                     easyeda_cp_cad_data=[line], download_raw_3d_model=False
