@@ -500,7 +500,7 @@ class ExporterFootprintKicad:
                     end_x=track.points_end_x[i],
                     end_y=track.points_end_y[i],
                     layers=track.layers,
-                    stroke_width=track.stroke_width,
+                    stroke_width=0.2 if track.stroke_width == 3 else track.stroke_width,
                 )
 
         for pad in ki.pads:
